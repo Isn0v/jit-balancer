@@ -20,9 +20,9 @@ public abstract class TestLevels {
     }
 
     public static UserThread createUserThread(ExecutionEngine e, CompilationEngine c, Runnable r) {
-        // return new Interpreter(e, c, r);
-        // return new AdaptiveCompiler(e, c, r);
-        // return new CachingTopTierJIT(e, c, r);
+//         return new Interpreter(compilationThreadBound(), e, c, r);
+//         return new AdaptiveCompiler(compilationThreadBound(), e, c, r);
+//         return new CachingTopTierJIT(compilationThreadBound(), e, c, r);
         return new SolutionThread(compilationThreadBound(), e, c, r);
     }
 
@@ -30,7 +30,7 @@ public abstract class TestLevels {
         EASY, MEDIUM, HARD
     }
 
-    private static final Level CURRENT_LEVEL = Level.HARD;
+    private static final Level CURRENT_LEVEL = Level.MEDIUM;
 
     public static boolean easyEnabled() {
         return CURRENT_LEVEL.ordinal() >= Level.EASY.ordinal();
