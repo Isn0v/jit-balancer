@@ -23,33 +23,27 @@ public class SolutionThread extends UserThread {
         final long hotLevel = hotness.getOrDefault(methodID, 0L);
         hotness.put(methodID, hotLevel + 1);
 
-        Optional<CompiledMethod> possibleCodeToExec = Optional.empty();
-        Optional<CompilationLevel> possibleCompLevel = Optional.empty();
+        Optional<CompiledMethodInfo> possibleMethodInfo = getCachedCompileInfo(methodID);
 
-        if (getCachedCompileInfo(methodID).isPresent()) {
-            possibleCodeToExec = Optional.ofNullable(getCachedCompileInfo(methodID).get().compiledMethod);
-            possibleCompLevel = Optional.ofNullable(getCachedCompileInfo(methodID).get().compilationLevel);
-        }
-
-        if (hotLevel > 90_000 && possibleCompLevel.isPresent() &&
-                possibleCompLevel.get().ordinal() < CompilationLevel.L2.ordinal()) {
+        if (hotLevel > 90_000 && possibleMethodInfo.isPresent() &&
+                possibleMethodInfo.get().compilationLevel.ordinal() < CompilationLevel.L2.ordinal()) {
 
             var compilationThread = getCompilationThread(CompilationLevel.L2, id);
             CompiledMethod code = compilationThread.compile();
             setCachedCompileInfo(new CompiledMethodInfo(code, CompilationLevel.L2));
             return exec.execute(code);
 
-        } else if (hotLevel > 9_000 && possibleCompLevel.isEmpty()) {
+        } else if (hotLevel > 9_000 && possibleMethodInfo.isEmpty()) {
             final CompiledMethod code = compiler.compile_l1(id);
             setCachedCompileInfo(new CompiledMethodInfo(code, CompilationLevel.L1));
             return exec.execute(code);
 
         }
 
-        if (possibleCodeToExec.isEmpty()) {
+        if (possibleMethodInfo.isEmpty()) {
             return exec.interpret(id);
         } else {
-            return exec.execute(possibleCodeToExec.get());
+            return exec.execute(possibleMethodInfo.get().compiledMethod);
         }
     }
 
