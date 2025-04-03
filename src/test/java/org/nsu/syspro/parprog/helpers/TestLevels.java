@@ -16,7 +16,7 @@ public abstract class TestLevels {
 
     public static int compilationThreadBound() {
         // must be >= 2
-        return 3;
+        return 4;
     }
 
     public static UserThread createUserThread(ExecutionEngine e, CompilationEngine c, Runnable r) {
@@ -30,7 +30,7 @@ public abstract class TestLevels {
         EASY, MEDIUM, HARD
     }
 
-    private static final Level CURRENT_LEVEL = Level.MEDIUM;
+    private static final Level CURRENT_LEVEL = Level.HARD;
 
     public static boolean easyEnabled() {
         return CURRENT_LEVEL.ordinal() >= Level.EASY.ordinal();

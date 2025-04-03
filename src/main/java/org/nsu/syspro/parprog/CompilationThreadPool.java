@@ -5,28 +5,22 @@ import org.nsu.syspro.parprog.external.CompiledMethod;
 import org.nsu.syspro.parprog.external.MethodID;
 import org.nsu.syspro.parprog.solution.SolutionThread;
 
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 
-public class CompilationThread {
+public class CompilationThreadPool {
     private final CompilationEngine compilationEngine;
-    private final SolutionThread.CompilationLevel level;
-    private final MethodID methodID;
 
 
-    private final ExecutorService service = Executors.newSingleThreadExecutor();
+    private final ExecutorService service;
 
-    public CompilationThread(CompilationEngine compilationEngine, SolutionThread.CompilationLevel level, MethodID methodID) {
+    public CompilationThreadPool(CompilationEngine compilationEngine, int compilationThreadBound) {
         this.compilationEngine = compilationEngine;
-        this.level = level;
-        this.methodID = methodID;
+        service = Executors.newFixedThreadPool(compilationThreadBound);
     }
 
 
-    public CompiledMethod compile() {
-        Callable<CompiledMethod> compileCallable = () -> switch (level) {
+    public synchronized CompiledMethod compile(SolutionThread.CompilationLevel compilationLevel, MethodID methodID) {
+        Callable<CompiledMethod> compileCallable = () -> switch (compilationLevel) {
             case L1 -> compilationEngine.compile_l1(methodID);
             case L2 -> compilationEngine.compile_l2(methodID);
         };
