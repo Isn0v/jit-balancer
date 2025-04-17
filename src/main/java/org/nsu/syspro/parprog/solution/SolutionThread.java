@@ -11,7 +11,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 
 public class SolutionThread extends UserThread {
-    // TODO: prove CPU-bound-compilation (probably make test for that)
     // TODO: Weak-worst-case-latency (think about it)
 
 
