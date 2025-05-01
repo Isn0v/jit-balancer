@@ -20,9 +20,9 @@ public abstract class TestLevels {
     }
 
     public static UserThread createUserThread(ExecutionEngine e, CompilationEngine c, Runnable r) {
-        // return new Interpreter(e, c, r);
-        // return new AdaptiveCompiler(e, c, r);
-        // return new CachingTopTierJIT(e, c, r);
+//         return new Interpreter(compilationThreadBound(), e, c, r);
+//         return new AdaptiveCompiler(compilationThreadBound(), e, c, r);
+//         return new CachingTopTierJIT(compilationThreadBound(), e, c, r);
         return new SolutionThread(compilationThreadBound(), e, c, r);
     }
 
