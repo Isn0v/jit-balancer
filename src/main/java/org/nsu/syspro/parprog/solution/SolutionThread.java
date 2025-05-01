@@ -5,100 +5,68 @@ import org.nsu.syspro.parprog.UserThread;
 import org.nsu.syspro.parprog.external.*;
 
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 
 public class SolutionThread extends UserThread {
+
+    private static final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     // Caches
     private static final Map<Long, CompiledMethodInfo> globalCachedInfo = new HashMap<>();
     private static final ThreadLocal<Map<Long, CompiledMethodInfo>> privateCachedInfo = ThreadLocal.withInitial(HashMap::new);
 
     // Hotness
-    private static final Map<Long, Long> globalHotness = new HashMap<>();
-    private static final ThreadLocal<Map<Long, Long>> privateHotness = ThreadLocal.withInitial(HashMap::new);
     private final Map<Long, Long> localHotness = new HashMap<>();
-
-    // Interpretations
-    private static final Map<Long, Long> globalInterpretationCounter = new HashMap<>();
-    private static final ThreadLocal<Map<Long, Long>> privateInterpretationCounter
-            = ThreadLocal.withInitial(HashMap::new);
-    private final Map<Long, Long> localInterpretationCounter = new HashMap<>();
 
 
     private long getHotness(long id) {
-        return privateHotness.get().getOrDefault(id, 0L);
+        return localHotness.getOrDefault(id, 0L);
     }
 
     private void incrementHotness(long id) {
-        privateHotness.get().put(id, privateHotness.get().getOrDefault(id, 0L) + 1);
         localHotness.put(id, localHotness.getOrDefault(id, 0L) + 1);
-        if (localHotness.getOrDefault(id, 0L) > 1000) {
-            globalHotness.put(id, globalHotness.getOrDefault(id, 0L) + localHotness.getOrDefault(id, 0L));
-            privateHotness.get().put(id, globalHotness.get(id));
-            localHotness.remove(id);
-        }
     }
-
-    private long getInterpretations(long id) {
-        return privateInterpretationCounter.get().getOrDefault(id, 0L);
-    }
-
-    private void incrementInterpretations(long id) {
-        privateInterpretationCounter.get().put(id, privateInterpretationCounter.get().getOrDefault(id, 0L) + 1);
-        localInterpretationCounter.put(id, localInterpretationCounter.getOrDefault(id, 0L) + 1);
-        if (localInterpretationCounter.getOrDefault(id, 0L) > 1000) {
-            globalInterpretationCounter.put(id,
-                    globalInterpretationCounter.getOrDefault(id, 0L) + localInterpretationCounter.getOrDefault(id, 0L));
-            privateInterpretationCounter.get().put(id, globalInterpretationCounter.get(id));
-            localInterpretationCounter.remove(id);
-        }
-    }
-
 
     private static CompilationThreadPool compilationThreadPool;
 
     public SolutionThread(int compilationThreadBound, ExecutionEngine exec, CompilationEngine compiler, Runnable r) {
         super(compilationThreadBound, exec, compiler, r);
         if (compilationThreadPool == null) {
-            compilationThreadPool = new CompilationThreadPool(compiler, this, compilationThreadBound);
+            compilationThreadPool = new CompilationThreadPool(compiler, compilationThreadBound);
         }
     }
 
-    public void setCachedInfo(long id, CompilationLevel compilationLevel, CompiledMethod compiledMethod) {
-        var payload = new CompiledMethodInfo(compiledMethod, compilationLevel);
-        if (!globalCachedInfo.containsKey(id) ||
-                (globalCachedInfo.containsKey(id) &&
-                        compilationLevel.ordinal() > globalCachedInfo.get(id).compilationLevel.ordinal())) {
-            globalCachedInfo.put(id, payload);
+    private void setCachedInfo(long id, CompilationLevel compilationLevel, CompiledMethod compiledMethod) {
+        try {
+            lock.writeLock().lock();
+            var payload = new CompiledMethodInfo(compiledMethod, compilationLevel);
+            if (!globalCachedInfo.containsKey(id) ||
+                    (globalCachedInfo.containsKey(id) &&
+                            compilationLevel.ordinal() > globalCachedInfo.get(id).compilationLevel.ordinal())) {
+                globalCachedInfo.put(id, payload);
+            }
+            privateCachedInfo.get().putAll(globalCachedInfo);
+
+        } finally {
+            lock.writeLock().unlock();
         }
     }
 
     private Optional<CompiledMethodInfo> getCachedInfo(long id) {
-        var tlCache = privateCachedInfo.get().get(id);
-        var globalCache = globalCachedInfo.get(id);
+        return Optional.ofNullable(privateCachedInfo.get().get(id));
+    }
 
-        if (globalCache == null && tlCache == null) {
-            return Optional.empty();
+    private void updateCachedInfo() {
+        try {
+            lock.readLock().lock();
+            privateCachedInfo.get().putAll(globalCachedInfo);
+        } finally {
+            lock.readLock().unlock();
         }
-
-        if (tlCache == null) {
-            privateCachedInfo.get().put(id, globalCache);
-            return Optional.of(globalCache);
-        }
-
-        if (globalCache == null){
-            return Optional.of(tlCache);
-        }
-
-        CompiledMethodInfo best;
-        if (tlCache.compilationLevel.ordinal() > globalCache.compilationLevel.ordinal()){
-            best = tlCache;
-        } else {
-            privateCachedInfo.get().put(id, globalCache);
-            best = globalCache;
-        }
-
-        return Optional.of(best);
     }
 
     @Override
@@ -110,45 +78,39 @@ public class SolutionThread extends UserThread {
 
         Optional<CompiledMethodInfo> possibleMethodInfo = getCachedInfo(methodID);
 
-        if (hotLevel > 10_000 && possibleMethodInfo.isPresent()
+        Future<CompiledMethod> futureCode = null;
+        CompilationLevel futureLevel = null;
+        if (hotLevel > 90_000 && possibleMethodInfo.isPresent()
                 && possibleMethodInfo.get().compilationLevel.ordinal() < CompilationLevel.L2.ordinal()) {
-            compilationThreadPool.compile(CompilationLevel.L2, id);
+            futureCode = compilationThreadPool.compile(CompilationLevel.L2, id);
+            futureLevel = CompilationLevel.L2;
 
-        } else if (hotLevel > 1_000 && possibleMethodInfo.isEmpty()) {
-            compilationThreadPool.compile(CompilationLevel.L1, id);
+        } else if (hotLevel > 9_000 && possibleMethodInfo.isEmpty()) {
+            futureCode = compilationThreadPool.compile(CompilationLevel.L1, id);
+            futureLevel = CompilationLevel.L1;
         }
-
 
 
         ExecutionResult execResult;
 
         if (possibleMethodInfo.isEmpty()) {
-            incrementInterpretations(methodID);
             execResult = exec.interpret(id);
         } else {
             execResult = exec.execute(possibleMethodInfo.get().compiledMethod);
         }
 
-        // Synchronization of compilations from thread pool
-        if (getInterpretations(methodID) > 9500) {
-            // if too many interpretations then we block execution until we get the compiled method from cache
-            possibleMethodInfo = getCachedInfo(methodID);
-            while (true) {
-                var hotness = getHotness(methodID);
-                boolean l1_escape = hotness <= 90_000
-                        && possibleMethodInfo.isPresent()
-                        && possibleMethodInfo.get().compilationLevel == CompilationLevel.L1;
-
-                boolean l2_escape = hotness > 90_000
-                        && possibleMethodInfo.isPresent()
-                        && possibleMethodInfo.get().compilationLevel == CompilationLevel.L2;
-
-                if (l1_escape || l2_escape) {
-                    break;
+        // Synchronization of compilations from thread pool after fast path
+        if (futureCode != null) {
+            try {
+                var code = futureCode.get();
+                if (code != null) {
+                    setCachedInfo(methodID, futureLevel, code);
                 }
-                possibleMethodInfo = getCachedInfo(methodID);
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
             }
         }
+        updateCachedInfo();
 
         return execResult;
     }
